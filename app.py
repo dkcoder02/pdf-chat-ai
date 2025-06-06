@@ -20,7 +20,10 @@ uploaded_file = st.file_uploader("Choose a PDF file", type="pdf")
 
 # Process the uploaded file
 if uploaded_file is not None:
-    if 'vector_store' not in st.session_state or st.session_state.uploaded_file_name != uploaded_file.name:
+    if (
+        "vector_store" not in st.session_state
+        or st.session_state.uploaded_file_name != uploaded_file.name
+    ):
         st.session_state.uploaded_file_name = uploaded_file.name
         with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp_file:
             tmp_file.write(uploaded_file.getvalue())
@@ -32,23 +35,22 @@ if uploaded_file is not None:
 
         # Chunking
         text_splitter = RecursiveCharacterTextSplitter(
-            chunk_size=1000,
-            chunk_overlap=200
+            chunk_size=1000, chunk_overlap=200
         )
 
         split_docs = text_splitter.split_documents(documents=docs)
 
         # Vector Embeddings
-        embedding_model = OpenAIEmbeddings(
-            model="text-embedding-3-large"
-        )
+        embedding_model = OpenAIEmbeddings(model="text-embedding-3-large")
 
         # Create or load vector store
         vector_store = QdrantVectorStore.from_documents(
-            url="http://localhost:6333",
+            url=os.getenv("QDRANT_URL"),
             documents=split_docs,
+            prefer_grpc=True,
+            api_key=os.getenv("QDRANT_API_KEY"),
             collection_name="uploaded_pdf_vectors",
-            embedding=embedding_model
+            embedding=embedding_model,
         )
 
         st.session_state.vector_store = vector_store
@@ -72,7 +74,12 @@ if uploaded_file is not None:
         # Vector Similarity Search
         search_results = vector_store.similarity_search(query=prompt)
 
-        context = "\n\n\n".join([f"Page Content: {result.page_content}\nPage Number: {result.metadata['page_label']}\nFile Location: {result.metadata['source']}" for result in search_results])
+        context = "\n\n\n".join(
+            [
+                f"Page Content: {result.page_content}\nPage Number: {result.metadata['page_label']}\nFile Location: {result.metadata['source']}"
+                for result in search_results
+            ]
+        )
 
         SYSTEM_PROMPT = f"""
             You are a helpfull AI Assistant who answers user query based on the available context
@@ -89,9 +96,9 @@ if uploaded_file is not None:
             chat_completion = client.chat.completions.create(
                 model="gpt-3.5-turbo",
                 messages=[
-                    { "role": "system", "content": SYSTEM_PROMPT },
-                    { "role": "user", "content": prompt },
-                ]
+                    {"role": "system", "content": SYSTEM_PROMPT},
+                    {"role": "user", "content": prompt},
+                ],
             )
             response = chat_completion.choices[0].message.content
 
@@ -104,9 +111,9 @@ if uploaded_file is not None:
             st.error(f"An error occurred while processing your question: {e}")
 
 else:
-    if 'vector_store' in st.session_state:
+    if "vector_store" in st.session_state:
         del st.session_state.vector_store
-    if 'messages' in st.session_state:
+    if "messages" in st.session_state:
         del st.session_state.messages
-    if 'uploaded_file_name' in st.session_state:
-        del st.session_state.uploaded_file_name 
+    if "uploaded_file_name" in st.session_state:
+        del st.session_state.uploaded_file_name
